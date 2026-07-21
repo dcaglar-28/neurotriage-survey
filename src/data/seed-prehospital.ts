@@ -43,44 +43,23 @@ const sections: Section[] = [
   {
     id: id("sect", 3),
     templateId: TEMPLATE_ID,
-    title: "Adaptive Workflow",
-    description: "Questions adapt based on where uncertainty was highest.",
+    title: "Uncertainty",
+    description: "Where assessment was hardest.",
     orderIndex: 3,
   },
   {
     id: id("sect", 4),
     templateId: TEMPLATE_ID,
-    title: "Current Medical Technology",
-    description: "Devices you use and what they leave out.",
+    title: "Technology & Diagnosis",
+    description: "Devices, information gaps, and trust.",
     orderIndex: 4,
   },
   {
     id: id("sect", 5),
     templateId: TEMPLATE_ID,
-    title: "Diagnostic Challenges",
-    description: "Hard-to-recognize conditions before hospital arrival.",
+    title: "Workflow & Reflection",
+    description: "Bottlenecks and what would help most.",
     orderIndex: 5,
-  },
-  {
-    id: id("sect", 6),
-    templateId: TEMPLATE_ID,
-    title: "Technology Trust",
-    description: "When measurements help — and when they don’t.",
-    orderIndex: 6,
-  },
-  {
-    id: id("sect", 7),
-    templateId: TEMPLATE_ID,
-    title: "Workflow Bottlenecks",
-    description: "Delays, repeated assessments, and information gaps.",
-    orderIndex: 7,
-  },
-  {
-    id: id("sect", 8),
-    templateId: TEMPLATE_ID,
-    title: "Final Reflection",
-    description: "What would change prehospital care the most?",
-    orderIndex: 8,
   },
 ];
 
@@ -114,6 +93,10 @@ function q(
   };
 }
 
+/**
+ * Hard cap: email + 17 content questions.
+ * Adaptive branch = 1 follow-up (of 3) so a full path stays ≤ 18 screens.
+ */
 const emailQuestion: Question = q(0, {
   sectionId: id("sect", 0),
   key: "email",
@@ -131,6 +114,7 @@ const emailQuestion: Question = q(0, {
 });
 
 const baseQuestions: Question[] = [
+  // 1–3 Background
   q(1, {
     sectionId: id("sect", 1),
     key: "role",
@@ -191,6 +175,7 @@ const baseQuestions: Question[] = [
       { label: "Other", value: "other" },
     ],
   }),
+  // 4–5 Recent patient
   q(4, {
     sectionId: id("sect", 2),
     key: "recent_patient_story",
@@ -220,12 +205,12 @@ const baseQuestions: Question[] = [
       { label: "Hospital Handover", value: "hospital_handover" },
     ],
   }),
-  // On Scene branch
+  // 6 Adaptive (only one shown) — ques 6, 7, 8
   q(6, {
     sectionId: id("sect", 3),
-    key: "scene_assessment_difficulty",
+    key: "scene_followup",
     type: "long_text",
-    title: "What made the initial assessment difficult?",
+    title: "What made the initial assessment difficult, and what information was missing?",
     description: null,
     required: true,
     orderIndex: 5,
@@ -234,9 +219,10 @@ const baseQuestions: Question[] = [
   }),
   q(7, {
     sectionId: id("sect", 3),
-    key: "scene_immediate_decisions",
+    key: "transport_followup",
     type: "long_text",
-    title: "Which decisions had to be made immediately?",
+    title:
+      "During transport, what changed — and what did you wish you could monitor continuously?",
     description: null,
     required: true,
     orderIndex: 6,
@@ -245,92 +231,25 @@ const baseQuestions: Question[] = [
   }),
   q(8, {
     sectionId: id("sect", 3),
-    key: "scene_unavailable_info",
+    key: "handover_followup",
     type: "long_text",
-    title: "What information was unavailable at the time?",
+    title:
+      "What information was lost or re-asked at hospital handover?",
     description: null,
     required: true,
     orderIndex: 7,
     config: {},
     repeatSourceQuestionId: null,
   }),
-  // Transport branch
+  // 7–11 Technology & diagnosis (path numbering after adaptive)
   q(9, {
-    sectionId: id("sect", 3),
-    key: "transport_condition_changed",
-    type: "yes_no",
-    title: "Did the patient's condition change during transport?",
-    description: null,
-    required: true,
-    orderIndex: 8,
-    config: {},
-    repeatSourceQuestionId: null,
-  }),
-  q(10, {
-    sectionId: id("sect", 3),
-    key: "transport_vitals_frequency",
-    type: "short_text",
-    title: "How often were vital signs reassessed?",
-    description: null,
-    required: true,
-    orderIndex: 9,
-    config: { placeholder: "e.g. every 5 minutes" },
-    repeatSourceQuestionId: null,
-  }),
-  q(11, {
-    sectionId: id("sect", 3),
-    key: "transport_wish_monitor",
-    type: "long_text",
-    title: "What information did you wish you could monitor continuously?",
-    description: null,
-    required: true,
-    orderIndex: 10,
-    config: {},
-    repeatSourceQuestionId: null,
-  }),
-  // Handover branch
-  q(12, {
-    sectionId: id("sect", 3),
-    key: "handover_repeated_assessments",
-    type: "long_text",
-    title: "Which assessments were repeated after arrival?",
-    description: null,
-    required: true,
-    orderIndex: 11,
-    config: {},
-    repeatSourceQuestionId: null,
-  }),
-  q(13, {
-    sectionId: id("sect", 3),
-    key: "handover_lost_info",
-    type: "long_text",
-    title: "What information was lost during handover?",
-    description: null,
-    required: true,
-    orderIndex: 12,
-    config: {},
-    repeatSourceQuestionId: null,
-  }),
-  q(14, {
-    sectionId: id("sect", 3),
-    key: "handover_questions_again",
-    type: "long_text",
-    title: "What questions does the receiving team almost always ask again?",
-    description: null,
-    required: true,
-    orderIndex: 13,
-    config: {},
-    repeatSourceQuestionId: null,
-  }),
-  // Technology
-  q(15, {
     sectionId: id("sect", 4),
     key: "devices_routine",
     type: "multiple_select",
     title: "Which diagnostic devices do you routinely use?",
     description: "Select all that apply.",
     required: true,
-    orderIndex: 14,
+    orderIndex: 8,
     config: {},
     repeatSourceQuestionId: null,
     options: [
@@ -346,78 +265,38 @@ const baseQuestions: Question[] = [
       { label: "Other", value: "other" },
     ],
   }),
-  q(16, {
+  q(10, {
     sectionId: id("sect", 4),
-    key: "device_usefulness",
-    type: "rating",
-    title: "How useful is this device?",
-    description: null,
-    required: true,
-    orderIndex: 15,
-    config: {
-      ratingMax: 5,
-      instanceLabelTemplate: "How useful is {{option}}?",
-    },
-    repeatSourceQuestionId: id("ques", 15),
-  }),
-  q(17, {
-    sectionId: id("sect", 4),
-    key: "device_limitations",
-    type: "long_text",
-    title: "What limitations does it have?",
-    description: null,
-    required: true,
-    orderIndex: 16,
-    config: {
-      instanceLabelTemplate: "What limitations does {{option}} have?",
-    },
-    repeatSourceQuestionId: id("ques", 15),
-  }),
-  q(18, {
-    sectionId: id("sect", 4),
-    key: "most_valuable_device",
-    type: "dropdown",
-    title:
-      "Which device provides the most valuable information during the first 15 minutes of patient care?",
-    description: null,
-    required: true,
-    orderIndex: 17,
-    config: { optionsFromQuestionKey: "devices_routine" },
-    repeatSourceQuestionId: null,
-  }),
-  q(19, {
-    sectionId: id("sect", 4),
-    key: "wish_hospital_tool",
+    key: "wish_field_capability",
     type: "long_text",
     title:
-      "Which hospital-only diagnostic tool do you wish you had access to before arriving at the hospital?",
+      "Which diagnostic capability do you most wish you had in the field before hospital arrival?",
     description: null,
     required: true,
-    orderIndex: 18,
+    orderIndex: 9,
     config: {},
     repeatSourceQuestionId: null,
   }),
-  // Diagnostic challenges
-  q(20, {
-    sectionId: id("sect", 5),
+  q(11, {
+    sectionId: id("sect", 4),
     key: "info_changes_plan",
     type: "long_text",
     title:
       "What information changes your treatment plan the most during the first 15 minutes?",
     description: null,
     required: true,
-    orderIndex: 19,
+    orderIndex: 10,
     config: {},
     repeatSourceQuestionId: null,
   }),
-  q(21, {
-    sectionId: id("sect", 5),
+  q(12, {
+    sectionId: id("sect", 4),
     key: "hard_conditions",
     type: "multiple_select",
     title: "Which conditions are hardest to recognize before hospital arrival?",
     description: "Select all that apply.",
     required: true,
-    orderIndex: 20,
+    orderIndex: 11,
     config: {},
     repeatSourceQuestionId: null,
     options: [
@@ -431,196 +310,90 @@ const baseQuestions: Question[] = [
       { label: "Other", value: "other" },
     ],
   }),
-  q(22, {
-    sectionId: id("sect", 5),
-    key: "condition_recognition_difficulty",
+  q(13, {
+    sectionId: id("sect", 4),
+    key: "least_trusted_field",
     type: "long_text",
-    title: "What makes this condition difficult to recognize?",
+    title:
+      "Which diagnostic measurements do you trust least in the field, and why?",
     description: null,
     required: true,
-    orderIndex: 21,
-    config: {
-      instanceLabelTemplate:
-        "What makes {{option}} difficult to recognize?",
-    },
-    repeatSourceQuestionId: id("ques", 21),
-  }),
-  q(23, {
-    sectionId: id("sect", 5),
-    key: "condition_confidence_info",
-    type: "long_text",
-    title: "What information would improve your confidence?",
-    description: null,
-    required: true,
-    orderIndex: 22,
-    config: {
-      instanceLabelTemplate:
-        "What information would improve your confidence for {{option}}?",
-    },
-    repeatSourceQuestionId: id("ques", 21),
-  }),
-  // Technology trust
-  q(24, {
-    sectionId: id("sect", 6),
-    key: "trusted_measurements",
-    type: "long_text",
-    title: "Which diagnostic measurements do you trust the most?",
-    description: null,
-    required: true,
-    orderIndex: 23,
+    orderIndex: 12,
     config: {},
     repeatSourceQuestionId: null,
   }),
-  q(25, {
-    sectionId: id("sect", 6),
-    key: "least_trusted_measurements",
-    type: "long_text",
-    title: "Which diagnostic measurements do you trust the least?",
-    description: null,
-    required: true,
-    orderIndex: 24,
-    config: {},
-    repeatSourceQuestionId: null,
-  }),
-  q(26, {
-    sectionId: id("sect", 6),
+  q(14, {
+    sectionId: id("sect", 4),
     key: "overrode_device",
     type: "yes_no",
     title: "Have you ever ignored or overridden a device?",
     description: null,
     required: true,
-    orderIndex: 25,
+    orderIndex: 13,
     config: {},
     repeatSourceQuestionId: null,
   }),
-  q(27, {
-    sectionId: id("sect", 6),
+  q(15, {
+    sectionId: id("sect", 4),
     key: "overrode_device_why",
     type: "long_text",
-    title: "Why?",
-    description: "Tell us about overriding or ignoring a device reading.",
-    required: true,
-    orderIndex: 26,
-    config: {},
-    repeatSourceQuestionId: null,
-  }),
-  q(28, {
-    sectionId: id("sect", 6),
-    key: "unreliable_field_measurements",
-    type: "long_text",
-    title: "Which measurements are unreliable in the field?",
+    title: "Why did you override or ignore it?",
     description: null,
     required: true,
-    orderIndex: 27,
+    orderIndex: 14,
     config: {},
     repeatSourceQuestionId: null,
   }),
-  // Bottlenecks
-  q(29, {
-    sectionId: id("sect", 7),
+  // 12–17 Workflow & reflection
+  q(16, {
+    sectionId: id("sect", 5),
     key: "delay_story",
     type: "long_text",
     title: "Describe the last time something significantly delayed your assessment.",
-    description: null,
+    description: "Include roughly how much time was lost and whether it affected care.",
     required: true,
-    orderIndex: 28,
+    orderIndex: 15,
     config: {},
     repeatSourceQuestionId: null,
   }),
-  q(30, {
-    sectionId: id("sect", 7),
-    key: "delay_time_lost",
-    type: "short_text",
-    title: "Approximately how much time was lost?",
-    description: null,
-    required: true,
-    orderIndex: 29,
-    config: { placeholder: "e.g. 10 minutes" },
-    repeatSourceQuestionId: null,
-  }),
-  q(31, {
-    sectionId: id("sect", 7),
-    key: "delay_affected_care",
-    type: "yes_no",
-    title: "Did the delay affect patient care?",
-    description: null,
-    required: true,
-    orderIndex: 30,
-    config: {},
-    repeatSourceQuestionId: null,
-  }),
-  q(32, {
-    sectionId: id("sect", 7),
-    key: "repeated_at_hospital",
-    type: "long_text",
-    title: "Which assessments are routinely repeated after hospital arrival?",
-    description: null,
-    required: true,
-    orderIndex: 31,
-    config: {},
-    repeatSourceQuestionId: null,
-  }),
-  q(33, {
-    sectionId: id("sect", 7),
-    key: "why_repeated",
-    type: "long_text",
-    title: "Why are they repeated?",
-    description: null,
-    required: true,
-    orderIndex: 32,
-    config: {},
-    repeatSourceQuestionId: null,
-  }),
-  q(34, {
-    sectionId: id("sect", 7),
+  q(17, {
+    sectionId: id("sect", 5),
     key: "wish_hospital_knew",
     type: "long_text",
     title:
       "What information do you wish the hospital already knew before the patient arrived?",
     description: null,
     required: true,
-    orderIndex: 33,
+    orderIndex: 16,
     config: {},
     repeatSourceQuestionId: null,
   }),
-  // Final reflection
-  q(35, {
-    sectionId: id("sect", 8),
+  q(18, {
+    sectionId: id("sect", 5),
     key: "one_additional_info",
     type: "long_text",
     title:
-      "If you could instantly know one additional piece of information about every patient before arriving at the hospital, what would it be?",
+      "If you could instantly know one additional piece of information about every patient before hospital arrival, what would it be?",
     description: null,
     required: true,
-    orderIndex: 34,
+    orderIndex: 17,
     config: {},
     repeatSourceQuestionId: null,
   }),
-  q(36, {
-    sectionId: id("sect", 8),
+  q(19, {
+    sectionId: id("sect", 5),
     key: "eliminate_obstacle",
     type: "long_text",
     title: "If you could eliminate one obstacle from your workflow, what would it be?",
     description: null,
     required: true,
-    orderIndex: 35,
-    config: {},
-    repeatSourceQuestionId: null,
-  }),
-  q(37, {
-    sectionId: id("sect", 8),
-    key: "anything_else",
-    type: "long_text",
-    title:
-      "Is there anything about prehospital patient assessment we didn't ask that you think is important?",
-    description: "Optional — share anything we missed.",
-    required: false,
-    orderIndex: 36,
+    orderIndex: 18,
     config: {},
     repeatSourceQuestionId: null,
   }),
 ];
 
+// Path: email + ≤17 content (adaptive follow-up is 1 of 3; override-why only if yes).
 const questions: Question[] = [
   emailQuestion,
   ...baseQuestions.map((question, index) => ({
@@ -648,22 +421,21 @@ function hideWhen(
   }));
 }
 
-const sceneIds = [id("ques", 6), id("ques", 7), id("ques", 8)];
-const transportIds = [id("ques", 9), id("ques", 10), id("ques", 11)];
-const handoverIds = [id("ques", 12), id("ques", 13), id("ques", 14)];
+const sceneId = id("ques", 6);
+const transportId = id("ques", 7);
+const handoverId = id("ques", 8);
 
 const branchRules: BranchRule[] = [
-  ...hideWhen(1, id("ques", 5), "on_scene", [...transportIds, ...handoverIds]),
-  ...hideWhen(2, id("ques", 5), "during_transport", [...sceneIds, ...handoverIds]),
-  ...hideWhen(3, id("ques", 5), "hospital_handover", [...sceneIds, ...transportIds]),
-  // Show "why override" only when yes
+  ...hideWhen(1, id("ques", 5), "on_scene", [transportId, handoverId]),
+  ...hideWhen(2, id("ques", 5), "during_transport", [sceneId, handoverId]),
+  ...hideWhen(3, id("ques", 5), "hospital_handover", [sceneId, transportId]),
   {
     id: id("rule", 400),
     templateId: TEMPLATE_ID,
-    sourceQuestionId: id("ques", 26),
+    sourceQuestionId: id("ques", 14),
     operator: "equals",
     value: "yes",
-    targetQuestionId: id("ques", 27),
+    targetQuestionId: id("ques", 15),
     action: "show",
     priority: 20,
   },
