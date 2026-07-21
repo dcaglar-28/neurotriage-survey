@@ -20,13 +20,41 @@ interface StoreData {
   sessions: InterviewSession[];
 }
 
+/** In-memory fallback for serverless (Vercel) where the filesystem is read-only */
+let memoryStore: StoreData | null = null;
+
+function seedData(): StoreData {
+  return {
+    templates: structuredClone(SEED_TEMPLATES),
+    sessions: [],
+  };
+}
+
 async function ensureStore(): Promise<StoreData> {
+  if (memoryStore) {
+    // Keep seed template definition current in memory too
+    for (const seed of SEED_TEMPLATES) {
+      const index = memoryStore.templates.findIndex((t) => t.id === seed.id);
+      if (index === -1) {
+        memoryStore.templates.unshift(structuredClone(seed));
+      } else {
+        const existing = memoryStore.templates[index];
+        memoryStore.templates[index] = {
+          ...structuredClone(seed),
+          status: existing.status,
+          createdAt: existing.createdAt,
+          updatedAt: now(),
+        };
+      }
+    }
+    return memoryStore;
+  }
+
   try {
     await fs.mkdir(DATA_DIR, { recursive: true });
     const raw = await fs.readFile(STORE_FILE, "utf8");
     const store = JSON.parse(raw) as StoreData;
 
-    // Keep the seeded NeuroTriage template definition up to date
     for (const seed of SEED_TEMPLATES) {
       const index = store.templates.findIndex((t) => t.id === seed.id);
       if (index === -1) {
@@ -44,18 +72,30 @@ async function ensureStore(): Promise<StoreData> {
     await saveStore(store);
     return store;
   } catch {
-    const initial: StoreData = {
-      templates: structuredClone(SEED_TEMPLATES),
-      sessions: [],
-    };
-    await fs.writeFile(STORE_FILE, JSON.stringify(initial, null, 2));
+    const initial = seedData();
+    try {
+      await fs.mkdir(DATA_DIR, { recursive: true });
+      await fs.writeFile(STORE_FILE, JSON.stringify(initial, null, 2));
+    } catch {
+      // Serverless / read-only FS — keep everything in memory
+      memoryStore = initial;
+      return memoryStore;
+    }
     return initial;
   }
 }
 
 async function saveStore(data: StoreData): Promise<void> {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(STORE_FILE, JSON.stringify(data, null, 2));
+  if (memoryStore) {
+    memoryStore = data;
+    return;
+  }
+  try {
+    await fs.mkdir(DATA_DIR, { recursive: true });
+    await fs.writeFile(STORE_FILE, JSON.stringify(data, null, 2));
+  } catch {
+    memoryStore = data;
+  }
 }
 
 function now() {

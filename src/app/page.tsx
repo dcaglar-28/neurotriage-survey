@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { listTemplates } from "@/lib/db/store";
+import { SEED_TEMPLATES } from "@/data/seed-prehospital";
 
 export const dynamic = "force-dynamic";
 
@@ -9,12 +10,37 @@ export const dynamic = "force-dynamic";
 const SURVEY_PATH = "/survey";
 
 export default async function HomePage() {
-  const templates = await listTemplates();
-  const survey =
-    templates.find((t) => t.slug === "prehospital-emergency-care") ??
-    templates.find((t) => t.status === "published") ??
-    templates[0] ??
-    null;
+  let survey: {
+    title: string;
+    description: string | null;
+    slug: string;
+  } | null = null;
+
+  try {
+    const templates = await listTemplates();
+    const match =
+      templates.find((t) => t.slug === "prehospital-emergency-care") ??
+      templates.find((t) => t.status === "published") ??
+      templates[0] ??
+      null;
+    if (match) {
+      survey = {
+        title: match.title,
+        description: match.description,
+        slug: match.slug,
+      };
+    }
+  } catch (error) {
+    console.error("[NeuroTriage] Failed to load templates:", error);
+  }
+
+  if (!survey && SEED_TEMPLATES[0]) {
+    survey = {
+      title: SEED_TEMPLATES[0].title,
+      description: SEED_TEMPLATES[0].description,
+      slug: SEED_TEMPLATES[0].slug,
+    };
+  }
 
   return (
     <div className="relative flex min-h-screen flex-col overflow-hidden bg-background">
