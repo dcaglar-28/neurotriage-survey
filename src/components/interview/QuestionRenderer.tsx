@@ -24,7 +24,7 @@ interface QuestionRendererProps {
   runtime: RuntimeQuestion;
   value: AnswerValue;
   onChange: (value: AnswerValue) => void;
-  onSubmit?: () => void;
+  onSubmit?: (value?: AnswerValue) => void;
   invalid?: boolean;
 }
 
@@ -148,7 +148,11 @@ export function QuestionRenderer({
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
-              onSubmit?.();
+              onSubmit?.(
+                typeof value === "string" && value !== "__skipped__"
+                  ? value
+                  : undefined
+              );
             }
           }}
           className={fieldClass}
@@ -193,7 +197,7 @@ export function QuestionRenderer({
                     return;
                   }
                   onChange(opt.value);
-                  setTimeout(() => onSubmit?.(), 220);
+                  setTimeout(() => onSubmit?.(opt.value), 220);
                 }}
               />
             );
@@ -284,7 +288,7 @@ export function QuestionRenderer({
                 return;
               }
               onChange(v);
-              setTimeout(() => onSubmit?.(), 180);
+              setTimeout(() => onSubmit?.(v), 180);
             }}
           >
             <SelectTrigger
@@ -328,7 +332,7 @@ export function QuestionRenderer({
               invalid={invalid}
               onClick={() => {
                 onChange(opt.value);
-                setTimeout(() => onSubmit?.(), 220);
+                setTimeout(() => onSubmit?.(opt.value), 220);
               }}
             />
           ))}
@@ -347,7 +351,7 @@ export function QuestionRenderer({
               type="button"
               onClick={() => {
                 onChange(n);
-                setTimeout(() => onSubmit?.(), 220);
+                setTimeout(() => onSubmit?.(n), 220);
               }}
               className={cn(
                 "flex h-12 w-12 items-center justify-center rounded-xl border text-base font-semibold transition-all",

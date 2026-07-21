@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, ArrowRight, Check, Loader2 } from "lucide-react";
@@ -47,6 +47,7 @@ export function InterviewPlayer({
   const [started, setStarted] = useState(
     () => initialSession.responses.length > 0
   );
+  const advancingRef = useRef(false);
 
   const path = useMemo(
     () => buildRuntimePath(template, answers),
@@ -90,6 +91,12 @@ export function InterviewPlayer({
       (current.instanceKey ? null : answers.get(current.question.key)) ??
       null)
     : null;
+
+  useEffect(() => {
+    setError(null);
+    setShowInvalid(false);
+    advancingRef.current = false;
+  }, [stepIndex, current?.runtimeId]);
 
   const setCurrentValue = useCallback(
     (value: AnswerValue) => {
@@ -138,110 +145,87 @@ export function InterviewPlayer({
     [current, preview, session]
   );
 
-  const goNext = useCallback(async () => {
-    if (!current) return;
-    const message = validationMessage(current.question, currentValue);
-    if (message) {
-      setError(message);
-      setShowInvalid(true);
-      return;
-    }
+  const goNext = useCallback(
+    async (valueOverride?: AnswerValue) => {
+      if (!current || advancingRef.current) return;
 
-    const nextAnswers = new Map(answers);
-    nextAnswers.set(current.runtimeId, currentValue);
-    if (!current.instanceKey) {
-      nextAnswers.set(current.question.key, currentValue);
-    }
-    const nextPath = buildRuntimePath(template, nextAnswers);
-    const isLast = stepIndex >= nextPath.length - 1;
-    const nextRuntime = nextPath[stepIndex + 1];
+      const valueToSave =
+        valueOverride !== undefined ? valueOverride : currentValue;
 
-    try {
-      await persist(
-        currentValue,
-        isLast ? null : (nextRuntime?.question.key ?? null),
-        isLast
-      );
-      setAnswers(nextAnswers);
-      setShowInvalid(false);
-      setError(null);
+      // Keep answers map in sync when advancing with an explicit value
+      if (valueOverride !== undefined) {
+        setAnswers((prev) => {
+          const next = new Map(prev);
+          next.set(current.runtimeId, valueOverride);
+          if (!current.instanceKey) {
+            next.set(current.question.key, valueOverride);
+          }
+          return next;
+        });
+      }
 
-      if (isLast) {
-        if (preview) {
-          router.push(`/admin/templates/${template.id}?previewComplete=1`);
-        } else {
-          localStorage.removeItem(TOKEN_KEY(template.slug));
-          router.push(`/interview/${template.slug}/thank-you`);
-        }
+      const message = validationMessage(current.question, valueToSave);
+      if (message) {
+        setError(message);
+        setShowInvalid(true);
         return;
       }
 
-      setDirection(1);
-      setStepIndex((i) => i + 1);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not save answer");
-      setShowInvalid(true);
-    }
-  }, [
-    answers,
-    current,
-    currentValue,
-    persist,
-    preview,
-    router,
-    stepIndex,
-    template,
-  ]);
+      advancingRef.current = true;
+
+      const nextAnswers = new Map(answers);
+      nextAnswers.set(current.runtimeId, valueToSave);
+      if (!current.instanceKey) {
+        nextAnswers.set(current.question.key, valueToSave);
+      }
+      const nextPath = buildRuntimePath(template, nextAnswers);
+      const isLast = stepIndex >= nextPath.length - 1;
+      const nextRuntime = nextPath[stepIndex + 1];
+
+      try {
+        await persist(
+          valueToSave,
+          isLast ? null : (nextRuntime?.question.key ?? null),
+          isLast
+        );
+        setAnswers(nextAnswers);
+        setShowInvalid(false);
+        setError(null);
+
+        if (isLast) {
+          if (preview) {
+            router.push(`/admin/templates/${template.id}?previewComplete=1`);
+          } else {
+            localStorage.removeItem(TOKEN_KEY(template.slug));
+            router.push(`/interview/${template.slug}/thank-you`);
+          }
+          return;
+        }
+
+        setDirection(1);
+        setStepIndex((i) => i + 1);
+      } catch (e) {
+        advancingRef.current = false;
+        setError(e instanceof Error ? e.message : "Could not save answer");
+        setShowInvalid(true);
+      }
+    },
+    [
+      answers,
+      current,
+      currentValue,
+      persist,
+      preview,
+      router,
+      stepIndex,
+      template,
+    ]
+  );
 
   const skipQuestion = useCallback(async () => {
     if (!current || !questionAllowsSkip(current.question)) return;
-    setCurrentValue(SKIPPED_ANSWER);
-    // Allow state to settle then advance with skip value
-    const nextAnswers = new Map(answers);
-    nextAnswers.set(current.runtimeId, SKIPPED_ANSWER);
-    if (!current.instanceKey) {
-      nextAnswers.set(current.question.key, SKIPPED_ANSWER);
-    }
-    const nextPath = buildRuntimePath(template, nextAnswers);
-    const isLast = stepIndex >= nextPath.length - 1;
-    const nextRuntime = nextPath[stepIndex + 1];
-
-    try {
-      await persist(
-        SKIPPED_ANSWER,
-        isLast ? null : (nextRuntime?.question.key ?? null),
-        isLast
-      );
-      setAnswers(nextAnswers);
-      setShowInvalid(false);
-      setError(null);
-
-      if (isLast) {
-        if (preview) {
-          router.push(`/admin/templates/${template.id}?previewComplete=1`);
-        } else {
-          localStorage.removeItem(TOKEN_KEY(template.slug));
-          router.push(`/interview/${template.slug}/thank-you`);
-        }
-        return;
-      }
-
-      setDirection(1);
-      setStepIndex((i) => i + 1);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not save answer");
-      setShowInvalid(true);
-    }
-  }, [
-    answers,
-    current,
-    persist,
-    preview,
-    router,
-    setCurrentValue,
-    stepIndex,
-    template,
-  ]);
+    await goNext(SKIPPED_ANSWER);
+  }, [current, goNext]);
 
   const goBack = useCallback(() => {
     if (stepIndex <= 0) return;
@@ -283,11 +267,11 @@ export function InterviewPlayer({
       if (current.question.type === "yes_no") {
         if (e.key.toLowerCase() === "y") {
           setCurrentValue("yes");
-          setTimeout(() => void goNext(), 180);
+          setTimeout(() => void goNext("yes"), 180);
         }
         if (e.key.toLowerCase() === "n") {
           setCurrentValue("no");
-          setTimeout(() => void goNext(), 180);
+          setTimeout(() => void goNext("no"), 180);
         }
       }
 
@@ -336,7 +320,7 @@ export function InterviewPlayer({
             setCurrentValue(formatOtherAnswer(""));
           } else {
             setCurrentValue(opt.value);
-            setTimeout(() => void goNext(), 180);
+            setTimeout(() => void goNext(opt.value), 180);
           }
         }
       }
@@ -346,7 +330,7 @@ export function InterviewPlayer({
         const max = current.question.config.ratingMax ?? 5;
         if (n >= 1 && n <= max) {
           setCurrentValue(n);
-          setTimeout(() => void goNext(), 180);
+          setTimeout(() => void goNext(n), 180);
         }
       }
     };
@@ -442,7 +426,7 @@ export function InterviewPlayer({
                 runtime={current}
                 value={currentValue === SKIPPED_ANSWER ? null : currentValue}
                 onChange={setCurrentValue}
-                onSubmit={() => void goNext()}
+                onSubmit={(value) => void goNext(value)}
                 invalid={showInvalid}
               />
               {error && (
