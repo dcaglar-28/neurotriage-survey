@@ -55,14 +55,65 @@ async function withBackend<T>(
   }
 }
 
-export const listTemplates = () =>
-  withBackend("listTemplates", (api) => api.listTemplates());
+export const listTemplates = async () => {
+  if (!isSupabaseConfigured()) {
+    return local.listTemplates();
+  }
+  try {
+    const templates = await supabase.listTemplates();
+    if (templates.length === 0) {
+      console.warn(
+        "[NeuroTriage] No templates in Supabase yet; using local seed. Run supabase/seed-prehospital.sql in the SQL Editor."
+      );
+      return local.listTemplates();
+    }
+    return templates;
+  } catch (error) {
+    if (isSchemaMissingError(error)) {
+      console.warn(
+        "[NeuroTriage] Supabase schema missing during listTemplates; using local store."
+      );
+      return local.listTemplates();
+    }
+    throw formatSupabaseError(error);
+  }
+};
 
-export const getTemplateBySlug = (slug: string) =>
-  withBackend("getTemplateBySlug", (api) => api.getTemplateBySlug(slug));
+export const getTemplateBySlug = async (slug: string) => {
+  if (!isSupabaseConfigured()) {
+    return local.getTemplateBySlug(slug);
+  }
+  try {
+    const template = await supabase.getTemplateBySlug(slug);
+    if (!template) {
+      return local.getTemplateBySlug(slug);
+    }
+    return template;
+  } catch (error) {
+    if (isSchemaMissingError(error)) {
+      return local.getTemplateBySlug(slug);
+    }
+    throw formatSupabaseError(error);
+  }
+};
 
-export const getTemplateById = (id: string) =>
-  withBackend("getTemplateById", (api) => api.getTemplateById(id));
+export const getTemplateById = async (id: string) => {
+  if (!isSupabaseConfigured()) {
+    return local.getTemplateById(id);
+  }
+  try {
+    const template = await supabase.getTemplateById(id);
+    if (!template) {
+      return local.getTemplateById(id);
+    }
+    return template;
+  } catch (error) {
+    if (isSchemaMissingError(error)) {
+      return local.getTemplateById(id);
+    }
+    throw formatSupabaseError(error);
+  }
+};
 
 export const createTemplate = (
   ...args: Parameters<typeof local.createTemplate>
