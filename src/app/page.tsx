@@ -5,10 +5,16 @@ import { listTemplates } from "@/lib/db/store";
 
 export const dynamic = "force-dynamic";
 
+/** Canonical public path once you attach a domain: https://your-domain.com/survey */
+const SURVEY_PATH = "/survey";
+
 export default async function HomePage() {
   const templates = await listTemplates();
   const survey =
-    templates.find((t) => t.status === "published") ?? templates[0] ?? null;
+    templates.find((t) => t.slug === "prehospital-emergency-care") ??
+    templates.find((t) => t.status === "published") ??
+    templates[0] ??
+    null;
 
   return (
     <div className="relative flex min-h-screen flex-col overflow-hidden bg-background">
@@ -31,7 +37,7 @@ export default async function HomePage() {
               Takes about 10–15 minutes · your answers are saved as you go
             </p>
             <Button asChild size="lg" className="mt-10 gap-2 px-8">
-              <Link href={`/interview/${survey.slug}`}>
+              <Link href={SURVEY_PATH}>
                 Start survey
                 <ArrowRight className="h-4 w-4" />
               </Link>

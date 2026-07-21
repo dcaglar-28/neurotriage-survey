@@ -115,8 +115,8 @@ create table if not exists public.responses (
   id uuid primary key default gen_random_uuid(),
   session_id uuid not null references public.interview_sessions(id) on delete cascade,
   question_id uuid not null references public.questions(id) on delete cascade,
-  -- Distinguishes loop instances, e.g. device=ECG
-  instance_key text,
+  -- Distinguishes loop instances, e.g. device=ECG (empty string = no instance)
+  instance_key text not null default '',
   value jsonb not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),

@@ -1,7 +1,19 @@
 import type { BranchRule, Question, Section, Template } from "@/lib/types";
 
-function id(prefix: string, n: number): string {
-  return `${prefix}-${String(n).padStart(4, "0")}-0000-0000-000000000001`;
+/** Deterministic valid UUIDs for the seeded NeuroTriage template */
+function id(
+  kind: "tmpl" | "sect" | "ques" | "rule" | "opt",
+  n: number
+): string {
+  const kindHex: Record<typeof kind, string> = {
+    tmpl: "a",
+    sect: "b",
+    ques: "c",
+    rule: "d",
+    opt: "e",
+  };
+  const suffix = `${kindHex[kind]}${String(n).padStart(11, "0")}`;
+  return `00000000-0000-4000-8000-${suffix}`;
 }
 
 const TEMPLATE_ID = id("tmpl", 1);
@@ -74,10 +86,11 @@ const sections: Section[] = [
 
 function opts(
   questionId: string,
-  items: Array<{ label: string; value: string }>
+  items: Array<{ label: string; value: string }>,
+  optionBase: number
 ) {
   return items.map((item, index) => ({
-    id: `${questionId}-opt-${index}`,
+    id: id("opt", optionBase + index),
     questionId,
     label: item.label,
     value: item.value,
@@ -97,7 +110,7 @@ function q(
     id: questionId,
     templateId: TEMPLATE_ID,
     ...rest,
-    options: opts(questionId, optionItems ?? []),
+    options: opts(questionId, optionItems ?? [], n * 100),
   };
 }
 

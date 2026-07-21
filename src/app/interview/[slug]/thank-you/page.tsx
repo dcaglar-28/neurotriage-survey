@@ -34,7 +34,7 @@ export default async function ThankYouPage({
             <Link href="/">Home</Link>
           </Button>
           <Button asChild>
-            <Link href={`/interview/${slug}`}>Start another response</Link>
+            <Link href="/survey">Start another response</Link>
           </Button>
         </div>
       </div>
