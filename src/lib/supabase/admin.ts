@@ -1,21 +1,26 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import {
+  getSupabasePublishableKey,
+  getSupabaseServiceKey,
+  getSupabaseUrl,
+} from "@/lib/supabase/env";
 
 let adminClient: SupabaseClient | null = null;
 
 export function isSupabaseConfigured(): boolean {
-  return Boolean(
-    process.env.NEXT_PUBLIC_SUPABASE_URL &&
-      process.env.SUPABASE_SERVICE_ROLE_KEY
-  );
+  return Boolean(getSupabaseUrl() && (getSupabaseServiceKey() || getSupabasePublishableKey()));
 }
 
-/** Server-only Supabase client (bypasses RLS). Used for anonymous session writes + admin reads. */
+/**
+ * Server-side Supabase client for sessions/responses/admin.
+ * Prefers service_role (bypasses RLS); falls back to publishable/anon key.
+ */
 export function createAdminClient(): SupabaseClient {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = getSupabaseUrl();
+  const key = getSupabaseServiceKey() || getSupabasePublishableKey();
   if (!url || !key) {
     throw new Error(
-      "Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY."
+      "Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (or SUPABASE_SERVICE_ROLE_KEY)."
     );
   }
   if (!adminClient) {

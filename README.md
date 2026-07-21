@@ -38,11 +38,13 @@ Without Supabase keys, answers save to `.data/store.json` for local testing.
 ### Production path (Supabase)
 
 1. Create a [Supabase](https://supabase.com) project  
-2. Run `supabase/migrations/001_schema.sql` in the SQL editor  
+2. In the SQL editor, run in order:
+   - `supabase/migrations/001_schema.sql`
+   - `supabase/migrations/002_anon_survey_policies.sql`
 3. Copy `.env.example` → `.env.local` and set:
    - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `SUPABASE_SERVICE_ROLE_KEY`
+   - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY` (recommended for seeding)
    - `NEXT_PUBLIC_APP_URL=https://YOUR-DOMAIN.com`
 4. Seed the interview template:
 
