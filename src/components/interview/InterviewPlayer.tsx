@@ -5,10 +5,14 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, ArrowRight, Check, Loader2 } from "lucide-react";
 import type { AnswerValue, InterviewSession, Template } from "@/lib/types";
+import { OTHER_VALUE, SKIPPED_ANSWER } from "@/lib/types";
 import {
   buildRuntimePath,
+  formatOtherAnswer,
   getAnswerMap,
   isAnswerValid,
+  questionAllowsSkip,
+  validationMessage,
 } from "@/lib/interview/engine";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -38,6 +42,7 @@ export function InterviewPlayer({
   const [stepIndex, setStepIndex] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showInvalid, setShowInvalid] = useState(false);
   const [direction, setDirection] = useState(1);
   const [started, setStarted] = useState(
     () => initialSession.responses.length > 0
@@ -74,8 +79,11 @@ export function InterviewPlayer({
   }, [preview, session.respondentToken, template.slug]);
 
   const current = path[stepIndex];
+  // Soft progress: no numbers shown to the user; ease toward completion
   const progress =
-    path.length === 0 ? 0 : Math.round(((stepIndex + 1) / path.length) * 100);
+    path.length <= 1
+      ? 8
+      : Math.round(6 + (stepIndex / (path.length - 1)) * 88);
 
   const currentValue: AnswerValue = current
     ? (answers.get(current.runtimeId) ??
@@ -95,6 +103,7 @@ export function InterviewPlayer({
         return next;
       });
       setError(null);
+      setShowInvalid(false);
     },
     [current]
   );
@@ -131,12 +140,10 @@ export function InterviewPlayer({
 
   const goNext = useCallback(async () => {
     if (!current) return;
-    if (!isAnswerValid(current.question, currentValue)) {
-      setError(
-        current.question.config.inputType === "email"
-          ? "Please enter a valid email address."
-          : "Please answer this question to continue."
-      );
+    const message = validationMessage(current.question, currentValue);
+    if (message) {
+      setError(message);
+      setShowInvalid(true);
       return;
     }
 
@@ -156,6 +163,8 @@ export function InterviewPlayer({
         isLast
       );
       setAnswers(nextAnswers);
+      setShowInvalid(false);
+      setError(null);
 
       if (isLast) {
         if (preview) {
@@ -171,6 +180,7 @@ export function InterviewPlayer({
       setStepIndex((i) => i + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save answer");
+      setShowInvalid(true);
     }
   }, [
     answers,
@@ -183,11 +193,62 @@ export function InterviewPlayer({
     template,
   ]);
 
+  const skipQuestion = useCallback(async () => {
+    if (!current || !questionAllowsSkip(current.question)) return;
+    setCurrentValue(SKIPPED_ANSWER);
+    // Allow state to settle then advance with skip value
+    const nextAnswers = new Map(answers);
+    nextAnswers.set(current.runtimeId, SKIPPED_ANSWER);
+    if (!current.instanceKey) {
+      nextAnswers.set(current.question.key, SKIPPED_ANSWER);
+    }
+    const nextPath = buildRuntimePath(template, nextAnswers);
+    const isLast = stepIndex >= nextPath.length - 1;
+    const nextRuntime = nextPath[stepIndex + 1];
+
+    try {
+      await persist(
+        SKIPPED_ANSWER,
+        isLast ? null : (nextRuntime?.question.key ?? null),
+        isLast
+      );
+      setAnswers(nextAnswers);
+      setShowInvalid(false);
+      setError(null);
+
+      if (isLast) {
+        if (preview) {
+          router.push(`/admin/templates/${template.id}?previewComplete=1`);
+        } else {
+          localStorage.removeItem(TOKEN_KEY(template.slug));
+          router.push(`/interview/${template.slug}/thank-you`);
+        }
+        return;
+      }
+
+      setDirection(1);
+      setStepIndex((i) => i + 1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save answer");
+      setShowInvalid(true);
+    }
+  }, [
+    answers,
+    current,
+    persist,
+    preview,
+    router,
+    setCurrentValue,
+    stepIndex,
+    template,
+  ]);
+
   const goBack = useCallback(() => {
     if (stepIndex <= 0) return;
     setDirection(-1);
     setStepIndex((i) => i - 1);
     setError(null);
+    setShowInvalid(false);
   }, [stepIndex]);
 
   // Keyboard shortcuts
@@ -234,16 +295,45 @@ export function InterviewPlayer({
         current.question.type === "multiple_choice" ||
         current.question.type === "multiple_select"
       ) {
+        const opts = [...current.options];
+        if (
+          current.question.config.allowOther !== false &&
+          !opts.some((o) => o.value === OTHER_VALUE || o.value === "other")
+        ) {
+          opts.push({
+            id: "keyboard-other",
+            questionId: current.question.id,
+            label: "Other",
+            value: OTHER_VALUE,
+            orderIndex: opts.length,
+          });
+        }
         const idx = e.key.toUpperCase().charCodeAt(0) - 65;
-        const opt = current.options[idx];
+        const opt = opts[idx];
         if (opt && idx >= 0 && idx < 26) {
           if (current.question.type === "multiple_select") {
             const selected = Array.isArray(currentValue) ? currentValue : [];
-            setCurrentValue(
-              selected.includes(opt.value)
-                ? selected.filter((v) => v !== opt.value)
-                : [...selected, opt.value]
-            );
+            if (opt.value === OTHER_VALUE) {
+              const hasOther = selected.some(
+                (v) => v === OTHER_VALUE || v.startsWith(`${OTHER_VALUE}:`)
+              );
+              setCurrentValue(
+                hasOther
+                  ? selected.filter(
+                      (v) =>
+                        v !== OTHER_VALUE && !v.startsWith(`${OTHER_VALUE}:`)
+                    )
+                  : [...selected, OTHER_VALUE]
+              );
+            } else {
+              setCurrentValue(
+                selected.includes(opt.value)
+                  ? selected.filter((v) => v !== opt.value)
+                  : [...selected, opt.value]
+              );
+            }
+          } else if (opt.value === OTHER_VALUE) {
+            setCurrentValue(formatOtherAnswer(""));
           } else {
             setCurrentValue(opt.value);
             setTimeout(() => void goNext(), 180);
@@ -333,7 +423,7 @@ export function InterviewPlayer({
             {saving ? "Saving…" : "Saved"}
           </span>
         </div>
-        <Progress value={progress} className="h-1 rounded-none" />
+        <Progress value={progress} className="h-1.5 rounded-none" />
       </header>
 
       <main className="relative z-10 flex flex-1 items-center px-4 py-10 sm:py-16">
@@ -347,19 +437,21 @@ export function InterviewPlayer({
               exit={{ opacity: 0, y: direction > 0 ? -24 : 24 }}
               transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
             >
-              <QuestionHeader
-                runtime={current}
-                index={stepIndex}
-                total={path.length}
-              />
+              <QuestionHeader runtime={current} />
               <QuestionRenderer
                 runtime={current}
-                value={currentValue}
+                value={currentValue === SKIPPED_ANSWER ? null : currentValue}
                 onChange={setCurrentValue}
                 onSubmit={() => void goNext()}
+                invalid={showInvalid}
               />
               {error && (
-                <p className="mt-4 text-sm text-destructive">{error}</p>
+                <p
+                  role="alert"
+                  className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                >
+                  {error}
+                </p>
               )}
             </motion.div>
           </AnimatePresence>
@@ -375,29 +467,41 @@ export function InterviewPlayer({
               <ArrowLeft className="h-4 w-4" />
               Back
             </Button>
-            <Button
-              type="button"
-              size="lg"
-              onClick={() => void goNext()}
-              disabled={saving}
-              className="gap-2"
-            >
-              {stepIndex >= path.length - 1 ? (
-                <>
-                  Finish
-                  <Check className="h-4 w-4" />
-                </>
-              ) : (
-                <>
-                  Next
-                  <ArrowRight className="h-4 w-4" />
-                </>
+            <div className="flex items-center gap-2">
+              {questionAllowsSkip(current.question) && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => void skipQuestion()}
+                  disabled={saving}
+                >
+                  Skip
+                </Button>
               )}
-            </Button>
+              <Button
+                type="button"
+                size="lg"
+                onClick={() => void goNext()}
+                disabled={saving}
+                className="gap-2"
+              >
+                {stepIndex >= path.length - 1 ? (
+                  <>
+                    Finish
+                    <Check className="h-4 w-4" />
+                  </>
+                ) : (
+                  <>
+                    Next
+                    <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
 
           <p className="mt-8 text-center text-xs text-muted-foreground">
-            Enter to continue · letters select choices · Esc not needed
+            Enter to continue · letters select choices
           </p>
         </div>
       </main>

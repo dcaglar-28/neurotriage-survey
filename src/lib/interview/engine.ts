@@ -7,6 +7,40 @@ import type {
   Section,
   Template,
 } from "../types";
+import { OTHER_VALUE, SKIPPED_ANSWER } from "../types";
+
+export function questionAllowsSkip(question: Question): boolean {
+  if (question.config.inputType === "email") return false;
+  if (question.config.allowSkip === false) return false;
+  return true;
+}
+
+export function questionAllowsOther(question: Question): boolean {
+  if (
+    question.type !== "multiple_choice" &&
+    question.type !== "multiple_select" &&
+    question.type !== "dropdown"
+  ) {
+    return false;
+  }
+  if (question.config.allowOther === false) return false;
+  return true;
+}
+
+export function isOtherAnswer(value: string): boolean {
+  return value === OTHER_VALUE || value.startsWith(`${OTHER_VALUE}:`);
+}
+
+export function otherDetail(value: string): string {
+  if (value === OTHER_VALUE) return "";
+  if (value.startsWith(`${OTHER_VALUE}:`)) return value.slice(OTHER_VALUE.length + 1);
+  return "";
+}
+
+export function formatOtherAnswer(detail: string): string {
+  const trimmed = detail.trim();
+  return trimmed ? `${OTHER_VALUE}:${trimmed}` : OTHER_VALUE;
+}
 
 function answerMatches(
   answer: AnswerValue,
@@ -243,6 +277,10 @@ export function isAnswerValid(
   question: Question,
   value: AnswerValue
 ): boolean {
+  if (value === SKIPPED_ANSWER) {
+    return questionAllowsSkip(question);
+  }
+
   if (!question.required) {
     if (value === null || value === undefined || value === "") return true;
     if (Array.isArray(value) && value.length === 0) return true;
@@ -258,8 +296,13 @@ export function isAnswerValid(
     }
     case "long_text":
     case "dropdown":
-    case "multiple_choice":
-      return typeof value === "string" && value.trim().length > 0;
+    case "multiple_choice": {
+      if (typeof value !== "string" || value.trim().length === 0) return false;
+      if (isOtherAnswer(value)) {
+        return otherDetail(value).trim().length > 0;
+      }
+      return true;
+    }
     case "yes_no":
       return (
         value === "yes" ||
@@ -267,8 +310,14 @@ export function isAnswerValid(
         value === true ||
         value === false
       );
-    case "multiple_select":
-      return Array.isArray(value) && value.length > 0;
+    case "multiple_select": {
+      if (!Array.isArray(value) || value.length === 0) return false;
+      const otherEntry = value.find((v) => isOtherAnswer(v));
+      if (otherEntry && otherDetail(otherEntry).trim().length === 0) {
+        return false;
+      }
+      return true;
+    }
     case "rating": {
       const max = question.config.ratingMax ?? 5;
       const n = typeof value === "number" ? value : Number(value);
@@ -277,6 +326,30 @@ export function isAnswerValid(
     default:
       return false;
   }
+}
+
+export function validationMessage(
+  question: Question,
+  value: AnswerValue
+): string | null {
+  if (isAnswerValid(question, value)) return null;
+  if (question.config.inputType === "email") {
+    return "Enter a valid email address to continue.";
+  }
+  if (
+    typeof value === "string" &&
+    isOtherAnswer(value) &&
+    otherDetail(value).trim().length === 0
+  ) {
+    return "Please specify your Other answer.";
+  }
+  if (
+    Array.isArray(value) &&
+    value.some((v) => isOtherAnswer(v) && otherDetail(v).trim().length === 0)
+  ) {
+    return "Please specify your Other answer.";
+  }
+  return "Please complete this question to continue.";
 }
 
 export function normalizeYesNo(value: AnswerValue): "yes" | "no" | null {

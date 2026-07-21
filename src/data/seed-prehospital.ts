@@ -125,6 +125,7 @@ const emailQuestion: Question = q(0, {
   config: {
     placeholder: "you@example.com",
     inputType: "email",
+    allowSkip: false,
   },
   repeatSourceQuestionId: null,
 });

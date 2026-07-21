@@ -1,7 +1,15 @@
 "use client";
 
+import { useMemo } from "react";
 import { cn } from "@/lib/utils";
 import type { AnswerValue, QuestionOption, RuntimeQuestion } from "@/lib/types";
+import { OTHER_VALUE } from "@/lib/types";
+import {
+  formatOtherAnswer,
+  isOtherAnswer,
+  otherDetail,
+  questionAllowsOther,
+} from "@/lib/interview/engine";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -17,6 +25,7 @@ interface QuestionRendererProps {
   value: AnswerValue;
   onChange: (value: AnswerValue) => void;
   onSubmit?: () => void;
+  invalid?: boolean;
 }
 
 function ChoiceButton({
@@ -24,11 +33,13 @@ function ChoiceButton({
   label,
   hint,
   onClick,
+  invalid,
 }: {
   selected: boolean;
   label: string;
   hint?: string;
   onClick: () => void;
+  invalid?: boolean;
 }) {
   return (
     <button
@@ -39,7 +50,8 @@ function ChoiceButton({
         "hover:border-primary/60 hover:bg-primary/5",
         selected
           ? "border-primary bg-primary/10 shadow-sm"
-          : "border-border bg-background"
+          : "border-border bg-background",
+        invalid && !selected && "border-destructive/50"
       )}
     >
       <span
@@ -57,14 +69,68 @@ function ChoiceButton({
   );
 }
 
+function withOtherOption(
+  questionId: string,
+  options: QuestionOption[],
+  allowOther: boolean
+): QuestionOption[] {
+  if (!allowOther) return options;
+  if (options.some((o) => o.value === OTHER_VALUE || o.value === "other")) {
+    return options;
+  }
+  return [
+    ...options,
+    {
+      id: `${questionId}-opt-other`,
+      questionId,
+      label: "Other",
+      value: OTHER_VALUE,
+      orderIndex: options.length,
+    },
+  ];
+}
+
+function OtherSpecify({
+  detail,
+  onDetailChange,
+  invalid,
+  autoFocus,
+}: {
+  detail: string;
+  onDetailChange: (detail: string) => void;
+  invalid?: boolean;
+  autoFocus?: boolean;
+}) {
+  return (
+    <Input
+      autoFocus={autoFocus}
+      value={detail}
+      placeholder="Please specify…"
+      onChange={(e) => onDetailChange(e.target.value)}
+      className={cn(invalid && "border-destructive focus-visible:ring-destructive")}
+      aria-invalid={invalid || undefined}
+    />
+  );
+}
+
 export function QuestionRenderer({
   runtime,
   value,
   onChange,
   onSubmit,
+  invalid = false,
 }: QuestionRendererProps) {
-  const { question, options } = runtime;
+  const { question } = runtime;
   const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const allowOther = questionAllowsOther(question);
+  const options = useMemo(
+    () => withOtherOption(question.id, runtime.options, allowOther),
+    [allowOther, question.id, runtime.options]
+  );
+
+  const fieldClass = cn(
+    invalid && "border-destructive focus-visible:ring-destructive"
+  );
 
   switch (question.type) {
     case "short_text":
@@ -76,7 +142,7 @@ export function QuestionRenderer({
           autoComplete={
             question.config.inputType === "email" ? "email" : undefined
           }
-          value={typeof value === "string" ? value : ""}
+          value={typeof value === "string" && value !== "__skipped__" ? value : ""}
           placeholder={question.config.placeholder ?? "Type your answer…"}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={(e) => {
@@ -85,6 +151,8 @@ export function QuestionRenderer({
               onSubmit?.();
             }
           }}
+          className={fieldClass}
+          aria-invalid={invalid || undefined}
         />
       );
 
@@ -92,52 +160,107 @@ export function QuestionRenderer({
       return (
         <Textarea
           autoFocus
-          value={typeof value === "string" ? value : ""}
-          placeholder={question.config.placeholder ?? "Share as much detail as you’d like…"}
+          value={typeof value === "string" && value !== "__skipped__" ? value : ""}
+          placeholder={
+            question.config.placeholder ?? "Share as much detail as you’d like…"
+          }
           onChange={(e) => onChange(e.target.value)}
-          className="min-h-[160px]"
+          className={cn("min-h-[160px]", fieldClass)}
+          aria-invalid={invalid || undefined}
         />
       );
 
-    case "multiple_choice":
+    case "multiple_choice": {
+      const stringValue = typeof value === "string" ? value : "";
+      const otherSelected = isOtherAnswer(stringValue);
       return (
         <div className="flex flex-col gap-2.5">
-          {options.map((opt, i) => (
-            <ChoiceButton
-              key={opt.id}
-              selected={value === opt.value}
-              label={opt.label}
-              hint={letters[i] ?? String(i + 1)}
-              onClick={() => {
-                onChange(opt.value);
-                // Auto-advance shortly after selection for Typeform feel
-                setTimeout(() => onSubmit?.(), 220);
-              }}
+          {options.map((opt, i) => {
+            const isOther = opt.value === OTHER_VALUE;
+            const selected = isOther
+              ? otherSelected
+              : stringValue === opt.value;
+            return (
+              <ChoiceButton
+                key={opt.id}
+                selected={selected}
+                label={opt.label}
+                hint={letters[i] ?? String(i + 1)}
+                invalid={invalid}
+                onClick={() => {
+                  if (isOther) {
+                    onChange(formatOtherAnswer(otherDetail(stringValue)));
+                    return;
+                  }
+                  onChange(opt.value);
+                  setTimeout(() => onSubmit?.(), 220);
+                }}
+              />
+            );
+          })}
+          {otherSelected && (
+            <OtherSpecify
+              autoFocus
+              detail={otherDetail(stringValue)}
+              invalid={invalid}
+              onDetailChange={(detail) => onChange(formatOtherAnswer(detail))}
             />
-          ))}
+          )}
         </div>
       );
+    }
 
     case "multiple_select": {
       const selected = Array.isArray(value) ? value : [];
+      const otherEntry = selected.find((v) => isOtherAnswer(v));
+      const otherSelected = Boolean(otherEntry);
+
       const toggle = (opt: QuestionOption) => {
+        const isOther = opt.value === OTHER_VALUE;
+        if (isOther) {
+          if (otherSelected) {
+            onChange(selected.filter((v) => !isOtherAnswer(v)));
+          } else {
+            onChange([...selected.filter((v) => !isOtherAnswer(v)), OTHER_VALUE]);
+          }
+          return;
+        }
         if (selected.includes(opt.value)) {
           onChange(selected.filter((v) => v !== opt.value));
         } else {
           onChange([...selected, opt.value]);
         }
       };
+
       return (
         <div className="flex flex-col gap-2.5">
-          {options.map((opt, i) => (
-            <ChoiceButton
-              key={opt.id}
-              selected={selected.includes(opt.value)}
-              label={opt.label}
-              hint={letters[i] ?? String(i + 1)}
-              onClick={() => toggle(opt)}
+          {options.map((opt, i) => {
+            const isOther = opt.value === OTHER_VALUE;
+            return (
+              <ChoiceButton
+                key={opt.id}
+                selected={
+                  isOther ? otherSelected : selected.includes(opt.value)
+                }
+                label={opt.label}
+                hint={letters[i] ?? String(i + 1)}
+                invalid={invalid}
+                onClick={() => toggle(opt)}
+              />
+            );
+          })}
+          {otherSelected && (
+            <OtherSpecify
+              autoFocus
+              detail={otherDetail(otherEntry ?? OTHER_VALUE)}
+              invalid={invalid}
+              onDetailChange={(detail) => {
+                const next = selected.filter((v) => !isOtherAnswer(v));
+                next.push(formatOtherAnswer(detail));
+                onChange(next);
+              }}
             />
-          ))}
+          )}
           <p className="mt-1 text-xs text-muted-foreground">
             Select all that apply · press Enter to continue
           </p>
@@ -145,27 +268,50 @@ export function QuestionRenderer({
       );
     }
 
-    case "dropdown":
+    case "dropdown": {
+      const stringValue = typeof value === "string" ? value : "";
+      const otherSelected = isOtherAnswer(stringValue);
+      const selectValue = otherSelected
+        ? OTHER_VALUE
+        : stringValue || undefined;
       return (
-        <Select
-          value={typeof value === "string" ? value : undefined}
-          onValueChange={(v) => {
-            onChange(v);
-            setTimeout(() => onSubmit?.(), 180);
-          }}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Select an option…" />
-          </SelectTrigger>
-          <SelectContent>
-            {options.map((opt) => (
-              <SelectItem key={opt.id} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="space-y-3">
+          <Select
+            value={selectValue}
+            onValueChange={(v) => {
+              if (v === OTHER_VALUE) {
+                onChange(formatOtherAnswer(""));
+                return;
+              }
+              onChange(v);
+              setTimeout(() => onSubmit?.(), 180);
+            }}
+          >
+            <SelectTrigger
+              className={cn(invalid && "border-destructive focus:ring-destructive")}
+              aria-invalid={invalid || undefined}
+            >
+              <SelectValue placeholder="Select an option…" />
+            </SelectTrigger>
+            <SelectContent>
+              {options.map((opt) => (
+                <SelectItem key={opt.id} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {otherSelected && (
+            <OtherSpecify
+              autoFocus
+              detail={otherDetail(stringValue)}
+              invalid={invalid}
+              onDetailChange={(detail) => onChange(formatOtherAnswer(detail))}
+            />
+          )}
+        </div>
       );
+    }
 
     case "yes_no":
       return (
@@ -179,6 +325,7 @@ export function QuestionRenderer({
               selected={value === opt.value}
               label={opt.label}
               hint={opt.hint}
+              invalid={invalid}
               onClick={() => {
                 onChange(opt.value);
                 setTimeout(() => onSubmit?.(), 220);
@@ -206,7 +353,8 @@ export function QuestionRenderer({
                 "flex h-12 w-12 items-center justify-center rounded-xl border text-base font-semibold transition-all",
                 current === n
                   ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border hover:border-primary/60 hover:bg-primary/5"
+                  : "border-border hover:border-primary/60 hover:bg-primary/5",
+                invalid && current === null && "border-destructive/50"
               )}
             >
               {n}
@@ -223,12 +371,8 @@ export function QuestionRenderer({
 
 export function QuestionHeader({
   runtime,
-  index,
-  total,
 }: {
   runtime: RuntimeQuestion;
-  index: number;
-  total: number;
 }) {
   return (
     <div className="mb-8 space-y-3">
@@ -237,13 +381,10 @@ export function QuestionHeader({
           {runtime.section.title}
         </p>
       )}
-      <p className="text-sm text-muted-foreground">
-        {index + 1} → {total}
-      </p>
       <h1 className="font-display text-2xl font-semibold leading-tight tracking-tight text-foreground sm:text-3xl md:text-4xl">
         {runtime.title}
       </h1>
-      {(runtime.question.description || runtime.instanceLabel) && (
+      {runtime.question.description && (
         <p className="max-w-2xl text-base text-muted-foreground">
           {runtime.question.description}
         </p>

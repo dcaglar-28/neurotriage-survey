@@ -36,7 +36,14 @@ export interface QuestionConfig {
   optionsFromQuestionKey?: string;
   /** Label prefix when this question is repeated per option */
   instanceLabelTemplate?: string;
+  /** Show an Other choice with free-text (choice questions). Default true for choice types. */
+  allowOther?: boolean;
+  /** Allow skipping this question. Default true except email. */
+  allowSkip?: boolean;
 }
+
+export const SKIPPED_ANSWER = "__skipped__";
+export const OTHER_VALUE = "other";
 
 export interface QuestionOption {
   id: string;
