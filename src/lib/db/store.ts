@@ -4,82 +4,123 @@
  * Intended production workflow (single domain):
  *   https://your-domain.com/survey  →  anonymous session  →  answers in Supabase  →  /admin/results
  *
- * When SUPABASE_SERVICE_ROLE_KEY is set, all reads/writes go to Supabase.
- * Otherwise falls back to local .data/store.json for offline development.
+ * When Supabase is configured AND reachable, use it.
+ * If tables are missing / schema not applied yet, fall back to local .data/store.json.
  */
 import { isSupabaseConfigured } from "@/lib/supabase/admin";
 import * as local from "@/lib/db/local-store";
 import * as supabase from "@/lib/db/supabase-store";
 
-function backend() {
-  return isSupabaseConfigured() ? supabase : local;
+function isSchemaMissingError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const e = error as { code?: string; message?: string };
+  return (
+    e.code === "PGRST205" ||
+    e.code === "42P01" ||
+    Boolean(e.message?.includes("Could not find the table")) ||
+    Boolean(e.message?.includes("does not exist"))
+  );
 }
 
-export const listTemplates = (...args: Parameters<typeof local.listTemplates>) =>
-  backend().listTemplates(...args);
+function formatSupabaseError(error: unknown): Error {
+  if (error && typeof error === "object" && "message" in error) {
+    const e = error as { code?: string; message?: string; hint?: string };
+    return new Error(
+      `[Supabase ${e.code ?? "error"}] ${e.message ?? "Unknown error"}${
+        e.hint ? ` Hint: ${e.hint}` : ""
+      }`
+    );
+  }
+  return error instanceof Error ? error : new Error(String(error));
+}
 
-export const getTemplateBySlug = (
-  ...args: Parameters<typeof local.getTemplateBySlug>
-) => backend().getTemplateBySlug(...args);
+async function withBackend<T>(
+  operation: string,
+  run: (api: typeof supabase | typeof local) => Promise<T>
+): Promise<T> {
+  if (!isSupabaseConfigured()) {
+    return run(local);
+  }
 
-export const getTemplateById = (
-  ...args: Parameters<typeof local.getTemplateById>
-) => backend().getTemplateById(...args);
+  try {
+    return await run(supabase);
+  } catch (error) {
+    if (isSchemaMissingError(error)) {
+      console.warn(
+        `[NeuroTriage] Supabase schema missing during ${operation}; using local store. Run supabase/migrations/001_schema.sql and 002_anon_survey_policies.sql in the SQL Editor, then npm run seed:supabase.`
+      );
+      return run(local);
+    }
+    throw formatSupabaseError(error);
+  }
+}
+
+export const listTemplates = () =>
+  withBackend("listTemplates", (api) => api.listTemplates());
+
+export const getTemplateBySlug = (slug: string) =>
+  withBackend("getTemplateBySlug", (api) => api.getTemplateBySlug(slug));
+
+export const getTemplateById = (id: string) =>
+  withBackend("getTemplateById", (api) => api.getTemplateById(id));
 
 export const createTemplate = (
   ...args: Parameters<typeof local.createTemplate>
-) => backend().createTemplate(...args);
+) => withBackend("createTemplate", (api) => api.createTemplate(...args));
 
 export const updateTemplate = (
   ...args: Parameters<typeof local.updateTemplate>
-) => backend().updateTemplate(...args);
+) => withBackend("updateTemplate", (api) => api.updateTemplate(...args));
 
 export const setTemplateStatus = (
   ...args: Parameters<typeof local.setTemplateStatus>
-) => backend().setTemplateStatus(...args);
+) => withBackend("setTemplateStatus", (api) => api.setTemplateStatus(...args));
 
 export const duplicateTemplate = (
   ...args: Parameters<typeof local.duplicateTemplate>
-) => backend().duplicateTemplate(...args);
+) => withBackend("duplicateTemplate", (api) => api.duplicateTemplate(...args));
 
 export const deleteTemplate = (
   ...args: Parameters<typeof local.deleteTemplate>
-) => backend().deleteTemplate(...args);
+) => withBackend("deleteTemplate", (api) => api.deleteTemplate(...args));
 
 export const startSession = (
   ...args: Parameters<typeof local.startSession>
-) => backend().startSession(...args);
+) => withBackend("startSession", (api) => api.startSession(...args));
 
 export const getSessionByToken = (
   ...args: Parameters<typeof local.getSessionByToken>
-) => backend().getSessionByToken(...args);
+) => withBackend("getSessionByToken", (api) => api.getSessionByToken(...args));
 
 export const getSessionById = (
   ...args: Parameters<typeof local.getSessionById>
-) => backend().getSessionById(...args);
+) => withBackend("getSessionById", (api) => api.getSessionById(...args));
 
 export const saveResponse = (
   ...args: Parameters<typeof local.saveResponse>
-) => backend().saveResponse(...args);
+) => withBackend("saveResponse", (api) => api.saveResponse(...args));
 
 export const completeSession = (
   ...args: Parameters<typeof local.completeSession>
-) => backend().completeSession(...args);
+) => withBackend("completeSession", (api) => api.completeSession(...args));
 
 export const getResultsOverview = (
   ...args: Parameters<typeof local.getResultsOverview>
-) => backend().getResultsOverview(...args);
+) => withBackend("getResultsOverview", (api) => api.getResultsOverview(...args));
 
 export const getResponsesGroupedByQuestion = (
   ...args: Parameters<typeof local.getResponsesGroupedByQuestion>
-) => backend().getResponsesGroupedByQuestion(...args);
+) =>
+  withBackend("getResponsesGroupedByQuestion", (api) =>
+    api.getResponsesGroupedByQuestion(...args)
+  );
 
 export const exportSessionsCsv = (
   ...args: Parameters<typeof local.exportSessionsCsv>
-) => backend().exportSessionsCsv(...args);
+) => withBackend("exportSessionsCsv", (api) => api.exportSessionsCsv(...args));
 
 export const resetStoreToSeed = (
   ...args: Parameters<typeof local.resetStoreToSeed>
-) => backend().resetStoreToSeed(...args);
+) => withBackend("resetStoreToSeed", (api) => api.resetStoreToSeed(...args));
 
 export { isSupabaseConfigured };
