@@ -690,6 +690,8 @@ export async function getResultsOverview(filters?: {
         status: s.status,
         startedAt: s.startedAt,
         completedAt: s.completedAt,
+        lastSavedAt: s.lastSavedAt,
+        answeredCount: s.responses.length,
         durationMs: s.completedAt
           ? new Date(s.completedAt).getTime() - new Date(s.startedAt).getTime()
           : null,
@@ -707,11 +709,10 @@ export async function getResponsesGroupedByQuestion(templateId: string) {
   if (!template) return [];
 
   const overview = await getResultsOverview({ templateId });
-  const completedIds = new Set(
-    overview.sessions
-      .filter((s) => s.status === "completed")
-      .map((s) => s.id)
+  const sessionStatus = new Map(
+    overview.sessions.map((s) => [s.id, s.status] as const)
   );
+  const sessionIds = overview.sessions.map((s) => s.id);
 
   const supabase = createAdminClient();
   const { data: responseRows } = await supabase
@@ -719,7 +720,9 @@ export async function getResponsesGroupedByQuestion(templateId: string) {
     .select("*")
     .in(
       "session_id",
-      completedIds.size ? [...completedIds] : ["00000000-0000-0000-0000-000000000000"]
+      sessionIds.length
+        ? sessionIds
+        : ["00000000-0000-0000-0000-000000000000"]
     );
 
   const byQuestion = (responseRows ?? []).map(mapResponse);
@@ -734,6 +737,7 @@ export async function getResponsesGroupedByQuestion(templateId: string) {
           sessionId: r.sessionId,
           instanceKey: r.instanceKey === "" ? null : r.instanceKey,
           value: r.value,
+          status: sessionStatus.get(r.sessionId) ?? ("in_progress" as const),
         })),
     }));
 }

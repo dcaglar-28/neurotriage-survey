@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Download } from "lucide-react";
-import type { ResultsOverview, TemplateSummary } from "@/lib/types";
+import type { ResultsOverview, SessionStatus, TemplateSummary } from "@/lib/types";
 import { formatDuration } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +34,12 @@ const ROLE_LABELS: Record<string, string> = {
   other: "Other",
 };
 
+type StatusFilter = "all" | SessionStatus;
+
+function statusLabel(status: SessionStatus) {
+  return status === "completed" ? "Completed" : "Incomplete";
+}
+
 export function ResultsDashboard({
   initialOverview,
   templates,
@@ -47,6 +53,7 @@ export function ResultsDashboard({
       sessionId: string;
       instanceKey: string | null;
       value: unknown;
+      status: SessionStatus;
     }>;
   }>;
 }) {
@@ -56,6 +63,7 @@ export function ResultsDashboard({
     templates[0]?.id ?? "all"
   );
   const [role, setRole] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
     null
   );
@@ -85,7 +93,22 @@ export function ResultsDashboard({
     return Array.from(set);
   }, [overview.sessions]);
 
-  const selectedSession = overview.sessions.find((s) => s.id === selectedSessionId);
+  const filteredSessions = useMemo(() => {
+    if (statusFilter === "all") return overview.sessions;
+    return overview.sessions.filter((s) => s.status === statusFilter);
+  }, [overview.sessions, statusFilter]);
+
+  const selectedSession = filteredSessions.find(
+    (s) => s.id === selectedSessionId
+  );
+
+  const filteredGrouped = useMemo(() => {
+    if (statusFilter === "all") return grouped;
+    return grouped.map(({ question, answers }) => ({
+      question,
+      answers: answers.filter((a) => a.status === statusFilter),
+    }));
+  }, [grouped, statusFilter]);
 
   const exportHref = (() => {
     const params = new URLSearchParams();
@@ -100,7 +123,8 @@ export function ResultsDashboard({
         <div>
           <h1 className="font-display text-3xl font-semibold">Results</h1>
           <p className="mt-1 text-muted-foreground">
-            Completion metrics, individual responses, and CSV export.
+            Completion metrics, individual responses, and CSV export. Incomplete
+            interviews are saved and shown separately.
           </p>
         </div>
         <Button asChild variant="outline" className="gap-2">
@@ -150,6 +174,22 @@ export function ResultsDashboard({
             ))}
           </SelectContent>
         </Select>
+        <Select
+          value={statusFilter}
+          onValueChange={(v) => {
+            setStatusFilter(v as StatusFilter);
+            setSelectedSessionId(null);
+          }}
+        >
+          <SelectTrigger className="w-[200px]">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="completed">Completed only</SelectItem>
+            <SelectItem value="in_progress">Incomplete only</SelectItem>
+          </SelectContent>
+        </Select>
         {loading && (
           <span className="self-center text-sm text-muted-foreground">
             Updating…
@@ -161,13 +201,10 @@ export function ResultsDashboard({
         {[
           { label: "Total interviews", value: overview.totalSessions },
           { label: "Completed", value: overview.completedSessions },
+          { label: "Incomplete", value: overview.inProgressSessions },
           {
             label: "Completion rate",
             value: `${overview.completionRate}%`,
-          },
-          {
-            label: "Avg. completion time",
-            value: formatDuration(overview.averageCompletionMs),
           },
         ].map((stat) => (
           <Card key={stat.label}>
@@ -184,11 +221,11 @@ export function ResultsDashboard({
           <CardHeader>
             <CardTitle>Individual responses</CardTitle>
             <CardDescription>
-              Click a session to inspect details.
+              Incomplete sessions show how far someone got before leaving.
             </CardDescription>
           </CardHeader>
           <CardContent className="max-h-[480px] space-y-2 overflow-y-auto">
-            {overview.sessions.map((s) => (
+            {filteredSessions.map((s) => (
               <button
                 key={s.id}
                 type="button"
@@ -204,6 +241,9 @@ export function ResultsDashboard({
                   <p className="text-xs text-muted-foreground">
                     {new Date(s.startedAt).toLocaleString()}
                     {s.role ? ` · ${ROLE_LABELS[s.role] ?? s.role}` : ""}
+                    {s.status === "in_progress"
+                      ? ` · ${s.answeredCount} answered`
+                      : ""}
                   </p>
                 </div>
                 <div className="text-right">
@@ -212,15 +252,17 @@ export function ResultsDashboard({
                       s.status === "completed" ? "success" : "warning"
                     }
                   >
-                    {s.status}
+                    {statusLabel(s.status)}
                   </Badge>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {formatDuration(s.durationMs)}
+                    {s.status === "completed"
+                      ? formatDuration(s.durationMs)
+                      : `Last save ${new Date(s.lastSavedAt).toLocaleString()}`}
                   </p>
                 </div>
               </button>
             ))}
-            {overview.sessions.length === 0 && (
+            {filteredSessions.length === 0 && (
               <p className="text-sm text-muted-foreground">No sessions yet.</p>
             )}
           </CardContent>
@@ -240,11 +282,19 @@ export function ResultsDashboard({
               <div className="space-y-3 text-sm">
                 <p>
                   <span className="text-muted-foreground">Status:</span>{" "}
-                  {selectedSession.status}
+                  {statusLabel(selectedSession.status)}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Answers saved:</span>{" "}
+                  {selectedSession.answeredCount}
                 </p>
                 <p>
                   <span className="text-muted-foreground">Started:</span>{" "}
                   {new Date(selectedSession.startedAt).toLocaleString()}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Last saved:</span>{" "}
+                  {new Date(selectedSession.lastSavedAt).toLocaleString()}
                 </p>
                 <p>
                   <span className="text-muted-foreground">Completed:</span>{" "}
@@ -277,32 +327,47 @@ export function ResultsDashboard({
         <CardHeader>
           <CardTitle>Responses by question</CardTitle>
           <CardDescription>
-            Grouped answers for the selected template.
+            Includes incomplete interviews (amber badge). Use the status filter
+            above to focus on completed or incomplete only.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {grouped.length === 0 && (
+          {filteredGrouped.length === 0 && (
             <p className="text-sm text-muted-foreground">
               Select a template to view grouped responses.
             </p>
           )}
-          {grouped.map(({ question, answers }) => (
+          {filteredGrouped.map(({ question, answers }) => (
             <div key={question.id} className="rounded-xl border p-4">
               <h3 className="font-medium">{question.title}</h3>
               <p className="mt-1 text-xs text-muted-foreground">
                 {question.key} · {question.type} · {answers.length} answers
+                {answers.some((a) => a.status === "in_progress")
+                  ? ` · ${answers.filter((a) => a.status === "in_progress").length} incomplete`
+                  : ""}
               </p>
               <ul className="mt-3 max-h-48 space-y-2 overflow-y-auto text-sm">
                 {answers.slice(0, 40).map((a, i) => (
                   <li
                     key={`${a.sessionId}-${a.instanceKey}-${i}`}
-                    className="rounded-md bg-muted/50 px-3 py-2"
+                    className={`rounded-md px-3 py-2 ${
+                      a.status === "in_progress"
+                        ? "border border-amber-500/30 bg-amber-500/10"
+                        : "bg-muted/50"
+                    }`}
                   >
-                    {a.instanceKey && (
-                      <span className="mr-2 text-xs font-medium text-primary">
-                        [{a.instanceKey}]
-                      </span>
-                    )}
+                    <div className="mb-1 flex flex-wrap items-center gap-2">
+                      {a.status === "in_progress" && (
+                        <Badge variant="warning" className="text-[10px]">
+                          Incomplete
+                        </Badge>
+                      )}
+                      {a.instanceKey && (
+                        <span className="text-xs font-medium text-primary">
+                          [{a.instanceKey}]
+                        </span>
+                      )}
+                    </div>
                     {Array.isArray(a.value)
                       ? a.value.join(", ")
                       : String(a.value ?? "")}

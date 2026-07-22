@@ -160,7 +160,16 @@ export interface ResultsOverview {
     status: SessionStatus;
     startedAt: string;
     completedAt: string | null;
+    lastSavedAt: string;
+    answeredCount: number;
     durationMs: number | null;
     role?: string;
   }>;
+}
+
+export interface GroupedAnswer {
+  sessionId: string;
+  instanceKey: string | null;
+  value: unknown;
+  status: SessionStatus;
 }

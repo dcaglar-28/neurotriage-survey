@@ -440,6 +440,8 @@ export async function getResultsOverview(filters?: {
           status: s.status,
           startedAt: s.startedAt,
           completedAt: s.completedAt,
+          lastSavedAt: s.lastSavedAt,
+          answeredCount: s.responses.length,
           durationMs,
           role:
             typeof roleResponse?.value === "string"
@@ -459,9 +461,8 @@ export async function getResponsesGroupedByQuestion(templateId: string) {
   const template = store.templates.find((t) => t.id === templateId);
   if (!template) return [];
 
-  const sessions = store.sessions.filter(
-    (s) => s.templateId === templateId && s.status === "completed"
-  );
+  // Include incomplete sessions so partial answers appear in Results
+  const sessions = store.sessions.filter((s) => s.templateId === templateId);
 
   return template.questions
     .filter((q) => !q.repeatSourceQuestionId)
@@ -473,6 +474,7 @@ export async function getResponsesGroupedByQuestion(templateId: string) {
             sessionId: s.id,
             instanceKey: r.instanceKey,
             value: r.value,
+            status: s.status,
           }))
       );
       return { question, answers };
